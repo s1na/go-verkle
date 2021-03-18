@@ -358,24 +358,27 @@ func (n *internalNode) ComputeCommitment(ks *kzg.KZGSettings, lg1 []bls.G1Point)
 		}
 	}
 
-	var commP *bls.G1Point
 	if InternalNodeNumChildren-emptyChildren >= multiExpThreshold {
-		commP = bls.LinCombG1(lg1, poly[:])
+		n.commitment = bls.LinCombG1(lg1, poly[:])
 	} else {
-		var comm bls.G1Point
-		bls.CopyG1(&comm, &bls.ZERO_G1)
-		for i := range poly {
-			if !bls.EqualZero(&poly[i]) {
-				var tmpG1, eval bls.G1Point
-				bls.MulG1(&eval, &lg1[i], &poly[i])
-				bls.CopyG1(&tmpG1, &comm)
-				bls.AddG1(&comm, &tmpG1, &eval)
-			}
-		}
-		commP = &comm
+		n.commitment = linCombGBomb(lg1, poly[:])
 	}
-	n.commitment = commP
 	return n.commitment
+}
+
+func linCombGBomb(lg []bls.G1Point, poly []bls.Fr) *bls.G1Point {
+	var comm bls.G1Point
+	bls.CopyG1(&comm, &bls.ZERO_G1)
+	for i := range poly {
+		if !bls.EqualZero(&poly[i]) {
+			var tmpG1, eval bls.G1Point
+			bls.MulG1(&eval, &lg1[i], &poly[i])
+			bls.CopyG1(&tmpG1, &comm)
+			bls.AddG1(&comm, &tmpG1, &eval)
+		}
+	}
+	return &comm
+
 }
 
 func (n *internalNode) GetCommitment() *bls.G1Point {

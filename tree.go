@@ -270,7 +270,7 @@ func (n *internalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 				h := child.Hash()
 				comm := new(bls.G1Point)
 				var tmp bls.Fr
-				hashToFr(&tmp, h)
+				HashToFr(&tmp, h)
 				bls.MulG1(comm, &bls.GenG1, &tmp)
 				newBranch.children[nextWordInExistingKey] = &hashedNode{hash: h, commitment: comm}
 				// Next word differs, so this was the last level.
@@ -312,7 +312,7 @@ func (n *internalNode) Hash() common.Hash {
 // sure that this doesn't overflow the modulus.
 // This piece of code is really ugly, and probably a performance hog, it
 // needs to be rewritten more efficiently.
-func hashToFr(out *bls.Fr, h [32]byte) {
+func HashToFr(out *bls.Fr, h [32]byte) {
 	var h2 [32]byte
 	// reverse endianness
 	for i := range h {
@@ -351,22 +351,22 @@ func (n *internalNode) ComputeCommitment(ks *kzg.KZGSettings, lg1 []bls.G1Point)
 		case empty:
 			emptyChildren++
 		case *leafNode, *hashedNode:
-			hashToFr(&poly[idx], child.Hash())
+			HashToFr(&poly[idx], child.Hash())
 		default:
 			compressed := bls.ToCompressedG1(childC.ComputeCommitment(ks, lg1))
-			hashToFr(&poly[idx], sha256.Sum256(compressed))
+			HashToFr(&poly[idx], sha256.Sum256(compressed))
 		}
 	}
 
 	if InternalNodeNumChildren-emptyChildren >= multiExpThreshold {
 		n.commitment = bls.LinCombG1(lg1, poly[:])
 	} else {
-		n.commitment = linCombGBomb(lg1, poly[:])
+		n.commitment = LinCombGBomb(lg1, poly[:])
 	}
 	return n.commitment
 }
 
-func linCombGBomb(lg []bls.G1Point, poly []bls.Fr) *bls.G1Point {
+func LinCombGBomb(lg1 []bls.G1Point, poly []bls.Fr) *bls.G1Point {
 	var comm bls.G1Point
 	bls.CopyG1(&comm, &bls.ZERO_G1)
 	for i := range poly {
@@ -390,7 +390,7 @@ func (n *internalNode) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*b
 	comms, zis, yis := n.children[childIdx].GetCommitmentsAlongPath(key)
 	var zi, yi bls.Fr
 	bls.AsFr(&zi, uint64(childIdx))
-	hashToFr(&yi, n.children[childIdx].Hash())
+	HashToFr(&yi, n.children[childIdx].Hash())
 	return append(comms, n.GetCommitment()), append(zis, &zi), append(yis, &yi)
 }
 
@@ -402,7 +402,7 @@ func (n *internalNode) EvalPathAt(key []byte, at *bls.Fr) []bls.Fr {
 	for i := range n.children {
 		var fi, tmp, quotient bls.Fr
 		bls.SubModFr(&quotient, at, &omegaIs[i])
-		hashToFr(&fi, n.children[i].Hash())
+		HashToFr(&fi, n.children[i].Hash())
 		bls.MulModFr(&tmp, &fi, &omegaIs[i])
 		bls.DivModFr(&fi, &tmp, &quotient)
 
@@ -473,7 +473,7 @@ func (n *hashedNode) Hash() common.Hash {
 func (n *hashedNode) ComputeCommitment(*kzg.KZGSettings, []bls.G1Point) *bls.G1Point {
 	if n.commitment == nil {
 		var hashAsFr bls.Fr
-		hashToFr(&hashAsFr, n.hash)
+		HashToFr(&hashAsFr, n.hash)
 		n.commitment = new(bls.G1Point)
 		bls.MulG1(n.commitment, &bls.GenG1, &hashAsFr)
 	}

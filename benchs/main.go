@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/rand"
 	"time"
@@ -48,6 +49,7 @@ func main() {
 	ks = kzg.NewKZGSettings(fftCfg, s1, s2)
 
 	benchmarkInsertInExisting()
+	benchmarkMultiExpThreshold()
 }
 
 func benchmarkInsertInExisting() {
@@ -59,43 +61,75 @@ func benchmarkInsertInExisting() {
 	toInsert := 10000
 	total := n + toInsert
 
-    keys := make([][]byte, n)
-    toInsertKeys := make([][]byte, toInsert)
-    value := []byte("value")
+	keys := make([][]byte, n)
+	toInsertKeys := make([][]byte, toInsert)
+	value := []byte("value")
 
-    for i := 0; i < 4; i++ {
-        // Generate set of keys once
+	for i := 0; i < 4; i++ {
+		// Generate set of keys once
 		for i := 0; i < total; i++ {
 			key := make([]byte, 32)
 			rand.Read(key)
 			if i < n {
-                keys[i] = key
+				keys[i] = key
 			} else {
-                toInsertKeys[i-n] = key
+				toInsertKeys[i-n] = key
 			}
 		}
-        fmt.Printf("Generated key set %d\n", i)
+		fmt.Printf("Generated key set %d\n", i)
 
-        // Create tree from same keys multiple times
-        for i := 0; i < 5; i++ {
-            root := verkle.New()
-            for _, k := range keys {
-                if err := root.Insert(k, value); err != nil {
-                    panic(err)
-                }
-            }
-            root.ComputeCommitment(ks, lg1)
+		// Create tree from same keys multiple times
+		for i := 0; i < 5; i++ {
+			root := verkle.New()
+			for _, k := range keys {
+				if err := root.Insert(k, value); err != nil {
+					panic(err)
+				}
+			}
+			root.ComputeCommitment(ks, lg1)
 
-            // Now insert the 10k leaves and measure time
-            start := time.Now()
-            for _, k := range toInsertKeys {
-                if err := root.Insert(k, value); err != nil {
-                    panic(err)
-                }
-            }
-            root.ComputeCommitment(ks, lg1)
-            elapsed := time.Since(start)
-            fmt.Printf("Took %v to insert and commit %d leaves\n", elapsed, toInsert)
-        }
-    }
+			// Now insert the 10k leaves and measure time
+			start := time.Now()
+			for _, k := range toInsertKeys {
+				if err := root.Insert(k, value); err != nil {
+					panic(err)
+				}
+			}
+			root.ComputeCommitment(ks, lg1)
+			elapsed := time.Since(start)
+			fmt.Printf("Took %v to insert and commit %d leaves\n", elapsed, toInsert)
+		}
+	}
+}
+
+func benchmarkMultiExpThreshold() {
+	n := verkle.InternalNodeNumChildren
+	var poly [verkle.InternalNodeNumChildren]bls.Fr
+	// Try linear combination with different number of
+	// non-zero values. Starting from 1 non-zero, up to 1024.
+	for i := 0; i < n; i++ {
+		for j := 0; j <= i; j++ {
+			verkle.HashToFr(&poly[j], sha256.Sum256([]byte{byte(j)}))
+		}
+		// Run LinCombG1 and GBomb a 100 times
+		// to get a more reliable runtime estimate
+		lincomb := int64(0)
+		gbomb := int64(0)
+		for k := 0; k < 100; k++ {
+			lincombStart := time.Now()
+			bls.LinCombG1(lg1, poly[:])
+			lincomb += time.Since(lincombStart).Nanoseconds()
+
+			gbombStart := time.Now()
+			verkle.LinCombGBomb(lg1, poly[:])
+			gbomb += time.Since(gbombStart).Nanoseconds()
+		}
+		lincomb /= 100
+		gbomb /= 100
+
+		if gbomb > lincomb {
+			fmt.Printf("Cutoff at %d. LinComb %vns, GBomb %vns\n", i, lincomb, gbomb)
+			break
+		}
+	}
 }

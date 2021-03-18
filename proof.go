@@ -48,7 +48,7 @@ func calcR(cs []*bls.G1Point, indices []*bls.Fr, ys []*bls.Fr) bls.Fr {
 	}
 
 	var tmp bls.Fr
-	hashToFr(&tmp, common.BytesToHash(digest.Sum(nil)))
+	HashToFr(&tmp, common.BytesToHash(digest.Sum(nil)))
 	return tmp
 
 }

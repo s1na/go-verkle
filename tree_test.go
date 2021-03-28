@@ -28,6 +28,7 @@ package verkle
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"math/rand"
 	"sort"
 	"testing"
@@ -191,6 +192,15 @@ func TestComputeRootCommitmentOnlineThreeLeaves(t *testing.T) {
 	if !bytes.Equal(got, expected) {
 		t.Fatalf("incorrect root commitment %x != %x", got, expected)
 	}
+
+	iAvg, iN := root.(*internalNode).AverageDepth()
+	if iN != 3 {
+		t.Errorf("incorrect number of leaves. Expected 3 got %d\n", iN)
+	}
+	expectedAvg := float64(1+1+1) / float64(3)
+	if iAvg != expectedAvg {
+		t.Errorf("incorrect average depth. Expected %f got %f\n", expectedAvg, iAvg)
+	}
 }
 
 func TestComputeRootCommitmentThreeLeavesDeep(t *testing.T) {
@@ -222,6 +232,15 @@ func TestComputeRootCommitmentOnlineThreeLeavesDeep(t *testing.T) {
 
 	if !bytes.Equal(got, expected) {
 		t.Fatalf("incorrect root commitment %x != %x", got, expected)
+	}
+
+	iAvg, iN := root.(*internalNode).AverageDepth()
+	if iN != 3 {
+		t.Errorf("incorrect number of leaves. Expected 3 got %d\n", iN)
+	}
+	expectedAvg := float64(26+26+1) / float64(3)
+	if math.Abs(iAvg-expectedAvg) >= 1e-7 {
+		t.Errorf("incorrect average depth. Expected %f got %f\n", expectedAvg, iAvg)
 	}
 }
 
@@ -368,5 +387,19 @@ func BenchmarkModifyLeaves(b *testing.B) {
 			}
 		}
 		root.ComputeCommitment(ks, lg1)
+	}
+}
+
+func TestRollingAverage(t *testing.T) {
+	nums := []int{10, 15, 9, 17, 1}
+	expected := float64(10.4)
+
+	cur := float64(0.0)
+	for i, num := range nums {
+		cur = rollingAverage(cur, i+1, float64(num))
+	}
+
+	if cur != expected {
+		t.Errorf("Incorrect average. Expected %f, got %f\n", expected, cur)
 	}
 }

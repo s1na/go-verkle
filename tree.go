@@ -107,6 +107,8 @@ type (
 	hashedNode struct {
 		hash       common.Hash
 		commitment *bls.G1Point
+		numLeaves  int
+		avgDepth   float64
 	}
 
 	leafNode struct {
@@ -117,10 +119,10 @@ type (
 	empty struct{}
 )
 
-var modulus *big.Int		// Field's modulus
-var omegaIs [nodeWidth]bls.Fr	// List of the root of unity
-var inverses [nodeWidth]bls.Fr	// List of all 1 / (1 - ωⁱ)
-var nodeWidthInversed bls.Fr	// Inverse of node witdh in prime field
+var modulus *big.Int           // Field's modulus
+var omegaIs [nodeWidth]bls.Fr  // List of the root of unity
+var inverses [nodeWidth]bls.Fr // List of all 1 / (1 - ωⁱ)
+var nodeWidthInversed bls.Fr   // Inverse of node witdh in prime field
 
 func init() {
 	// Calculate the lagrangian evaluation basis.
@@ -234,14 +236,19 @@ func (n *internalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 			case empty:
 				continue
 			case *leafNode:
-				n.children[i] = &hashedNode{hash: n.children[i].Hash()}
+				n.children[i] = &hashedNode{
+					hash:      n.children[i].Hash(),
+					numLeaves: 1,
+					avgDepth:  float64((n.depth + width) / width),
+				}
 				break
 			case *hashedNode:
 				break
 			default:
 				comm := n.children[i].ComputeCommitment(ks, lg1)
 				h := sha256.Sum256(bls.ToCompressedG1(comm))
-				n.children[i] = &hashedNode{hash: h, commitment: comm}
+				iAvg, iN := n.children[i].(*internalNode).AverageDepth()
+				n.children[i] = &hashedNode{hash: h, commitment: comm, numLeaves: iN, avgDepth: iAvg}
 				break
 			}
 		}
@@ -265,6 +272,7 @@ func (n *internalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 
 			nextWordInInsertedKey := offset2Key(key, n.depth+width)
 			if nextWordInInsertedKey != nextWordInExistingKey {
+				newDepth := float64((newBranch.depth + width) / width)
 				// Directly hash the (left) node that was already
 				// inserted.
 				h := child.Hash()
@@ -272,7 +280,7 @@ func (n *internalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 				var tmp bls.Fr
 				hashToFr(&tmp, h)
 				bls.MulG1(comm, &bls.GenG1, &tmp)
-				newBranch.children[nextWordInExistingKey] = &hashedNode{hash: h, commitment: comm}
+				newBranch.children[nextWordInExistingKey] = &hashedNode{hash: h, commitment: comm, numLeaves: 1, avgDepth: newDepth}
 				// Next word differs, so this was the last level.
 				// Insert it directly into its final slot.
 				newBranch.children[nextWordInInsertedKey] = &leafNode{key: key, value: value}
@@ -306,6 +314,34 @@ func (n *internalNode) Hash() common.Hash {
 	}
 
 	return common.BytesToHash(digest.Sum(nil))
+}
+
+func (n *internalNode) AverageDepth() (float64, int) {
+	avg := float64(0)
+	num := 0
+	for _, c := range n.children {
+		switch c.(type) {
+		case empty:
+			continue
+		case *leafNode:
+			num++
+			avg = rollingAverage(avg, num, float64((n.depth+width)/width))
+		case *hashedNode:
+			h := c.(*hashedNode)
+			nSum := float64(num) * avg
+			hSum := float64(h.numLeaves) * h.avgDepth
+			num += h.numLeaves
+			avg = (nSum + hSum) / float64(num)
+		default:
+			internal := c.(*internalNode)
+			nSum := float64(num) * avg
+			iAvg, iN := internal.AverageDepth()
+			iSum := float64(iN) * iAvg
+			num += iN
+			avg = (nSum + iSum) / float64(num)
+		}
+	}
+	return avg, num
 }
 
 // This function takes a hash and turns it into a bls.Fr integer, making
@@ -493,4 +529,8 @@ func (e empty) GetCommitment() *bls.G1Point {
 
 func (e empty) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*bls.Fr, []*bls.Fr, [][]bls.Fr) {
 	panic("trying to produce a commitment for an empty subtree")
+}
+
+func rollingAverage(old float64, n int, a float64) float64 {
+	return old + ((a - old) / float64(n))
 }

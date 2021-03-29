@@ -65,6 +65,11 @@ type VerkleNode interface {
 	// elements needed to build a proof. The order of elements
 	// is from the bottom of the tree, up to the root.
 	GetCommitmentsAlongPath([]byte) ([]*bls.G1Point, []*bls.Fr, []*bls.Fr, [][]bls.Fr)
+
+	// AverageDepth returns the average depth of the leaves
+	// within the current subtree, as well as the number of
+	// those leaves.
+	AverageDepth() (float64, int)
 }
 
 const (
@@ -469,6 +474,10 @@ func (n *leafNode) Hash() common.Hash {
 	return common.BytesToHash(digest.Sum(nil))
 }
 
+func (n *leafNode) AverageDepth() (float64, int) {
+	panic("leaf node doesn't store depth")
+}
+
 func (n *hashedNode) Insert(k []byte, value []byte) error {
 	return errInsertIntoHash
 }
@@ -503,6 +512,10 @@ func (n *hashedNode) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*bls
 	panic("can not get the full path, and there is no proof of absence")
 }
 
+func (n *hashedNode) AverageDepth() (float64, int) {
+	return n.avgDepth, n.numLeaves
+}
+
 func (e empty) Insert(k []byte, value []byte) error {
 	return errors.New("hmmmm... a leaf node should not be inserted directly into")
 }
@@ -529,6 +542,10 @@ func (e empty) GetCommitment() *bls.G1Point {
 
 func (e empty) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*bls.Fr, []*bls.Fr, [][]bls.Fr) {
 	panic("trying to produce a commitment for an empty subtree")
+}
+
+func (e empty) AverageDepth() (float64, int) {
+	return 0, 0
 }
 
 func rollingAverage(old float64, n int, a float64) float64 {

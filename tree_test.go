@@ -450,19 +450,45 @@ func TestNodeSerde(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = ParseNode(rs, tc)
+	res, err := ParseNode(rs, tc)
 	if err != nil {
 		t.Error(err)
 	}
+	resRoot := res.(*InternalNode)
+	isInternalEqual(root, resRoot, t)
 
-	leaf := root.children[0]
+	leaf := (root.children[0]).(*leafNode)
 	ls, err := leaf.Serialize()
 	if err != nil {
 		t.Error(err)
 	}
 
-	_, err = ParseNode(ls, tc)
+	res, err = ParseNode(ls, tc)
 	if err != nil {
 		t.Error(err)
 	}
+	resLeaf := res.(*leafNode)
+	if !bytes.Equal(leaf.key, resLeaf.key) {
+		t.Errorf("deserialized leaf has incorrect key. Expected %x, got %x\n", leaf.key, resLeaf.key)
+	}
+	if !bytes.Equal(leaf.value, resLeaf.value) {
+		t.Errorf("deserialized leaf has incorrect value. Expected %x, got %x\n", leaf.value, resLeaf.value)
+	}
+}
+
+func isInternalEqual(a, b *InternalNode, t *testing.T) bool {
+	if a.treeConfig.nodeWidth != b.treeConfig.nodeWidth {
+		return false
+	}
+
+	for i := 0; i < a.treeConfig.nodeWidth; i++ {
+		_, acEmpty := a.children[i].(empty)
+		_, bcEmpty := b.children[i].(empty)
+		// TODO: Check child's value
+		if acEmpty != bcEmpty {
+			return false
+		}
+	}
+
+	return true
 }

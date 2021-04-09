@@ -425,6 +425,16 @@ func (n *InternalNode) Serialize() ([]byte, error) {
 	return rlp.EncodeToBytes([]interface{}{bitlist, children})
 }
 
+func (n *InternalNode) nonEmptyIndices() []int {
+	indices := make([]int, 0)
+	for i, c := range n.children {
+		if _, ok := c.(empty); !ok {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 func (n *leafNode) Insert(k []byte, value []byte) error {
 	n.key = k
 	n.value = value

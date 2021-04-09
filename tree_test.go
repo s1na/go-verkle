@@ -28,7 +28,6 @@ package verkle
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -440,17 +439,18 @@ func BenchmarkModifyLeaves(b *testing.B) {
 	}
 }
 
-func TestNodeSer(t *testing.T) {
-	tree := New()
+func TestNodeSerde(t *testing.T) {
+	tree := New(10, lg1)
 	tree.Insert(zeroKeyTest, testValue)
 	tree.Insert(fourtyKeyTest, testValue)
 
 	root := tree.(*InternalNode)
+	tc := root.treeConfig
 	rs, err := root.Serialize()
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = ParseNode(rs)
+	_, err = ParseNode(rs, tc)
 	if err != nil {
 		t.Error(err)
 	}
@@ -460,9 +460,8 @@ func TestNodeSer(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	fmt.Printf("leaf: %v, ser: %v\n", leaf, ls)
 
-	_, err = ParseNode(ls)
+	_, err = ParseNode(ls, tc)
 	if err != nil {
 		t.Error(err)
 	}

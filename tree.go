@@ -114,6 +114,7 @@ type (
 	hashedNode struct {
 		hash       common.Hash
 		commitment *bls.G1Point
+		modulus    *big.Int
 	}
 
 	leafNode struct {
@@ -232,7 +233,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 				if flush != nil {
 					flush <- FlushableNode{childHash, n.children[i]}
 				}
-				n.children[i] = &hashedNode{hash: childHash}
+				n.children[i] = &hashedNode{hash: childHash, modulus: n.treeConfig.modulus}
 				break
 			case *hashedNode:
 				break
@@ -242,7 +243,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 				if flush != nil {
 					flush <- FlushableNode{h, n.children[i]}
 				}
-				n.children[i] = &hashedNode{hash: h, commitment: comm}
+				n.children[i] = &hashedNode{hash: h, commitment: comm, modulus: n.treeConfig.modulus}
 				break
 			}
 		}
@@ -275,7 +276,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, ks *kzg.KZGSettin
 				var tmp bls.Fr
 				hashToFr(&tmp, h, n.treeConfig.modulus)
 				bls.MulG1(comm, &bls.GenG1, &tmp)
-				newBranch.children[nextWordInExistingKey] = &hashedNode{hash: h, commitment: comm}
+				newBranch.children[nextWordInExistingKey] = &hashedNode{hash: h, commitment: comm, modulus: n.treeConfig.modulus}
 				// Next word differs, so this was the last level.
 				// Insert it directly into its final slot.
 				newBranch.children[nextWordInInsertedKey] = &leafNode{key: key, value: value}
@@ -297,11 +298,11 @@ func (n *InternalNode) Flush(flush chan FlushableNode) {
 	for i, child := range n.children {
 		if c, ok := child.(*InternalNode); ok {
 			c.Flush(flush)
-			n.children[i] = &hashedNode{c.Hash(), c.commitment}
+			n.children[i] = &hashedNode{hash: c.Hash(), commitment: c.commitment, modulus: n.treeConfig.modulus}
 		} else if c, ok := child.(*leafNode); ok {
 			childHash := c.Hash()
 			flush <- FlushableNode{childHash, c}
-			n.children[i] = &hashedNode{hash: childHash}
+			n.children[i] = &hashedNode{hash: childHash, modulus: n.treeConfig.modulus}
 		}
 	}
 	flush <- FlushableNode{n.Hash(), n}
@@ -491,7 +492,7 @@ func (n *hashedNode) Hash() common.Hash {
 func (n *hashedNode) ComputeCommitment(*kzg.KZGSettings) *bls.G1Point {
 	if n.commitment == nil {
 		var hashAsFr bls.Fr
-		hashToFr(&hashAsFr, n.hash, big.NewInt(0))
+		hashToFr(&hashAsFr, n.hash, n.modulus)
 		n.commitment = new(bls.G1Point)
 		bls.MulG1(n.commitment, &bls.GenG1, &hashAsFr)
 	}

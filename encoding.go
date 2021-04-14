@@ -20,12 +20,12 @@ func ParseNode(serialized []byte, tc *TreeConfig) (VerkleNode, error) {
 	}
 
 	if c == 1 {
-		// hashedNode
+		// HashedNode
 		hash, _, err := rlp.SplitString(elems)
 		if err != nil {
 			return nil, err
 		}
-		return &hashedNode{hash: common.BytesToHash(hash)}, nil
+		return &HashedNode{hash: common.BytesToHash(hash)}, nil
 	} else if c == 2 {
 		// either leaf or internal
 		kind, first, rest, err := rlp.Split(elems)
@@ -42,7 +42,7 @@ func ParseNode(serialized []byte, tc *TreeConfig) (VerkleNode, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &leafNode{key: first, value: value}, nil
+			return &LeafNode{key: first, value: value}, nil
 		} else if len(first) == 128 {
 			// internal
 			children, _, err := rlp.SplitString(rest)
@@ -67,7 +67,7 @@ func createInternalNode(bitlist []byte, raw []byte, tc *TreeConfig) (*InternalNo
 		return nil, errors.New(ErrInvalidNodeEncoding)
 	}
 	for i, index := range indices {
-		n.children[index] = &hashedNode{hash: common.BytesToHash(raw[i*32 : (i+1)*32])}
+		n.children[index] = &HashedNode{hash: common.BytesToHash(raw[i*32 : (i+1)*32])}
 	}
 	return n, nil
 }

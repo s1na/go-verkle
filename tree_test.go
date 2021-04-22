@@ -28,6 +28,7 @@ package verkle
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -211,8 +212,55 @@ func TestComputeRootCommitmentOnlineThreeLeavesFlush(t *testing.T) {
 		count++
 	}
 
-	if count != 4 {
+	if count != 1 {
 		t.Fatalf("incorrect number of flushed leaves 4 != %d", count)
+	}
+}
+
+func TestFlushedLeaves(t *testing.T) {
+	flush := make(chan FlushableNode)
+	go func() {
+		root := New(8)
+		key1 := common.Hex2Bytes("0000000000000000000000000000000000000000000000000000000000000000")
+		key2 := common.Hex2Bytes("0100000000000000000000000000000000000000000000000000000000000000")
+		key3 := common.Hex2Bytes("0101000000000000000000000000000000000000000000000000000000000000")
+		root.InsertOrdered(key1, testValue, flush)
+		root.InsertOrdered(key2, testValue, flush)
+		root.InsertOrdered(key3, testValue, flush)
+		root.(*InternalNode).Flush(flush)
+		close(flush)
+	}()
+
+	count := 0
+	for f := range flush {
+		n, isInternal := f.Node.(*InternalNode)
+		if !isInternal {
+			t.Fatalf("invalid node type received, expected internal: %v\n", f.Node)
+		}
+		switch n.depth {
+		case 0:
+			if _, ok := n.children[0].(*LeafNode); !ok {
+				t.Fatal("root's children#0 must be a leaf")
+			}
+			if _, ok := n.children[1].(*HashedNode); !ok {
+				t.Fatal("root;s children#1 must be a hashed internal node")
+			}
+		case 8:
+			if _, ok := n.children[0].(*LeafNode); !ok {
+				fmt.Printf("heh %v %v\n", n.children[0], ok)
+				t.Fatal("internal's children#0 must be a leaf")
+			}
+			if _, ok := n.children[1].(*LeafNode); !ok {
+				t.Fatal("internal's children#1 must be a leaf")
+			}
+		default:
+			t.Fatal("unexpected depth")
+		}
+		count++
+	}
+
+	if count != 2 {
+		t.Fatalf("incorrect number of flushed nodes 2 != %d", count)
 	}
 }
 
@@ -310,44 +358,6 @@ func TestInsertVsOrdered(t *testing.T) {
 
 	if !bytes.Equal(h1, h2) {
 		t.Error("Insert and InsertOrdered produce different trees")
-	}
-}
-
-func TestFlush1kLeaves(t *testing.T) {
-	n := 1000
-	rand.Seed(time.Now().UnixNano())
-	keys := randomKeysSorted(n)
-	value := []byte("value")
-
-	flush := make(chan FlushableNode)
-	go func() {
-		root := New(10)
-		for _, k := range keys {
-			root.InsertOrdered(k, value, flush)
-		}
-		root.(*InternalNode).Flush(flush)
-		close(flush)
-	}()
-
-	count := 0
-	leaves := 0
-	for f := range flush {
-		_, isLeaf := f.Node.(*LeafNode)
-		_, isInternal := f.Node.(*InternalNode)
-		if !isLeaf && !isInternal {
-			t.Fatal("invalid node type received, expected leaf")
-		}
-		if isLeaf {
-			leaves++
-		}
-		count++
-	}
-
-	if leaves != n {
-		t.Errorf("number of flushed leaves incorrect. Expected %d got %d\n", n, leaves)
-	}
-	if count <= n {
-		t.Errorf("number of flushed nodes incorrect. Expected %d got %d\n", n, leaves)
 	}
 }
 

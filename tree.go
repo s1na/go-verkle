@@ -245,24 +245,12 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 		// subtree directly preceding this new one, can
 		// safely be calculated.
 		for i := int(nChild) - 1; i >= 0; i-- {
-			switch n.children[i].(type) {
-			case Empty:
-				continue
-			case *LeafNode:
-				childHash := n.children[i].Hash()
-				if flush != nil {
-					flush <- FlushableNode{childHash, n.children[i]}
-				}
-				n.children[i] = &HashedNode{hash: childHash}
-				break
-			case *HashedNode:
-				break
-			default:
-				comm := n.children[i].ComputeCommitment()
+			if c, ok := n.children[i].(*InternalNode); ok {
+				comm := c.ComputeCommitment()
 				// Doesn't re-compute commitment as it's cached
-				h := n.children[i].Hash()
+				h := c.Hash()
 				if flush != nil {
-					n.children[i].(*InternalNode).Flush(flush)
+					c.Flush(flush)
 				}
 				n.children[i] = &HashedNode{hash: h, commitment: comm}
 				break
@@ -290,17 +278,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 
 			nextWordInInsertedKey := offset2Key(key, n.depth+width, width)
 			if nextWordInInsertedKey != nextWordInExistingKey {
-				// Directly hash the (left) node that was already
-				// inserted.
-				h := child.Hash()
-				comm := new(bls.G1Point)
-				var tmp bls.Fr
-				hashToFr(&tmp, h, n.treeConfig.modulus)
-				bls.MulG1(comm, &bls.GenG1, &tmp)
-				if flush != nil {
-					flush <- FlushableNode{h, child}
-				}
-				newBranch.children[nextWordInExistingKey] = &HashedNode{hash: h, commitment: comm}
+				newBranch.children[nextWordInExistingKey] = child
 				// Next word differs, so this was the last level.
 				// Insert it directly into its final slot.
 				newBranch.children[nextWordInInsertedKey] = &LeafNode{key: key, value: value}
@@ -323,10 +301,6 @@ func (n *InternalNode) Flush(flush chan FlushableNode) {
 		if c, ok := child.(*InternalNode); ok {
 			c.Flush(flush)
 			n.children[i] = &HashedNode{c.Hash(), c.commitment}
-		} else if c, ok := child.(*LeafNode); ok {
-			childHash := c.Hash()
-			flush <- FlushableNode{childHash, c}
-			n.children[i] = &HashedNode{hash: childHash}
 		}
 	}
 	flush <- FlushableNode{n.Hash(), n}

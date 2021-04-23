@@ -542,7 +542,7 @@ func TestNodeSerde(t *testing.T) {
 	resRoot := res.(*InternalNode)
 	isInternalEqual(root, resRoot, t)
 
-	leaf := (root.children[0]).(*leafNode)
+	leaf := (root.children[0]).(*LeafNode)
 	ls, err := leaf.Serialize()
 	if err != nil {
 		t.Error(err)
@@ -552,7 +552,7 @@ func TestNodeSerde(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	resLeaf := res.(*leafNode)
+	resLeaf := res.(*LeafNode)
 	if !bytes.Equal(leaf.key, resLeaf.key) {
 		t.Errorf("deserialized leaf has incorrect key. Expected %x, got %x\n", leaf.key, resLeaf.key)
 	}
@@ -567,8 +567,8 @@ func isInternalEqual(a, b *InternalNode, t *testing.T) bool {
 	}
 
 	for i := 0; i < a.treeConfig.nodeWidth; i++ {
-		_, acEmpty := a.children[i].(empty)
-		_, bcEmpty := b.children[i].(empty)
+		_, acEmpty := a.children[i].(Empty)
+		_, bcEmpty := b.children[i].(Empty)
 		// TODO: Check child's value
 		if acEmpty != bcEmpty {
 			return false

@@ -553,6 +553,35 @@ func (e Empty) Serialize() ([]byte, error) {
 	return nil, errors.New("can't encode empty node to RLP")
 }
 
+func Rebuild(raw []byte, tc *TreeConfig, getter func([]byte) ([]byte, error)) (VerkleNode, error) {
+	n, err := ParseNode(raw, tc)
+	if err != nil {
+		return nil, err
+	}
+	in, ok := n.(*InternalNode)
+	if !ok {
+		return n, nil
+	}
+
+	for i, c := range in.children {
+		h, ok := c.(*HashedNode)
+		if !ok {
+			continue
+		}
+		rawChild, err := getter(h.hash.Bytes())
+		if err != nil {
+			return nil, err
+		}
+
+		result, err := Rebuild(rawChild, tc, getter)
+		if err != nil {
+			return nil, err
+		}
+		in.children[i] = result
+	}
+	return n, nil
+}
+
 func setBit(bitlist []uint8, index int) {
 	byt := index / 8
 	bit := index % 8

@@ -21,11 +21,7 @@ func ParseNode(serialized []byte, tc *TreeConfig) (VerkleNode, error) {
 
 	if c == 1 {
 		// hashedNode
-		hash, _, err := rlp.SplitString(elems)
-		if err != nil {
-			return nil, err
-		}
-		return &HashedNode{hash: common.BytesToHash(hash)}, nil
+		return parseHashedNode(elems)
 	} else if c == 2 {
 		// either leaf or internal
 		kind, first, rest, err := rlp.Split(elems)
@@ -37,7 +33,6 @@ func ParseNode(serialized []byte, tc *TreeConfig) (VerkleNode, error) {
 		}
 
 		if len(first) == 32 {
-			// leaf
 			value, _, err := rlp.SplitString(rest)
 			if err != nil {
 				return nil, err
@@ -45,7 +40,7 @@ func ParseNode(serialized []byte, tc *TreeConfig) (VerkleNode, error) {
 			return &LeafNode{key: first, value: value}, nil
 		} else if len(first) == 128 {
 			// internal
-			children, _, err := rlp.SplitString(rest)
+			children, _, err := rlp.SplitList(rest)
 			if err != nil {
 				return nil, err
 			}
@@ -62,13 +57,54 @@ func createInternalNode(bitlist []byte, raw []byte, tc *TreeConfig) (*InternalNo
 	// TODO: fix depth
 	n := (newInternalNode(0, tc)).(*InternalNode)
 	indices := indicesFromBitlist(bitlist)
-	if len(raw)/32 != len(indices) {
-		return nil, errors.New(ErrInvalidNodeEncoding)
-	}
-	for i, index := range indices {
-		n.children[index] = &HashedNode{hash: common.BytesToHash(raw[i*32 : (i+1)*32])}
+	for _, index := range indices {
+		el, rest, err := rlp.SplitList(raw)
+		if err != nil {
+			return nil, err
+		}
+		c, err := rlp.CountValues(el)
+		if err != nil {
+			return nil, err
+		}
+		switch c {
+		case 1:
+			// hashed node
+			hashed, err := parseHashedNode(el)
+			if err != nil {
+				return nil, err
+			}
+			n.children[index] = hashed
+		case 2:
+			// leaf
+			leaf, err := parseLeafNode(el)
+			if err != nil {
+				return nil, err
+			}
+			n.children[index] = leaf
+		}
+		raw = rest
 	}
 	return n, nil
+}
+
+func parseLeafNode(raw []byte) (*LeafNode, error) {
+	key, rest, err := rlp.SplitString(raw)
+	if err != nil {
+		return nil, err
+	}
+	value, _, err := rlp.SplitString(rest)
+	if err != nil {
+		return nil, err
+	}
+	return &LeafNode{key, value}, nil
+}
+
+func parseHashedNode(raw []byte) (*HashedNode, error) {
+	h, _, err := rlp.SplitString(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &HashedNode{hash: common.BytesToHash(h)}, nil
 }
 
 func indicesFromBitlist(bitlist []byte) []int {

@@ -414,20 +414,16 @@ func (n *InternalNode) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*b
 
 func (n *InternalNode) Serialize() ([]byte, error) {
 	var bitlist [128]uint8
-	children := make([]byte, 0, n.treeConfig.nodeWidth*32)
+	children := make([][][]byte, 0)
 	for i, c := range n.children {
 		switch c.(type) {
 		case Empty:
 		case *LeafNode:
 			setBit(bitlist[:], i)
-			serialized, err := c.Serialize()
-			if err != nil {
-				return nil, err
-			}
-			children = append(children, serialized...)
+			children = append(children, [][]byte{c.(*LeafNode).key, c.(*LeafNode).value})
 		default:
 			setBit(bitlist[:], i)
-			children = append(children, c.Hash().Bytes()...)
+			children = append(children, [][]byte{c.Hash().Bytes()})
 		}
 	}
 	return rlp.EncodeToBytes([]interface{}{bitlist, children})

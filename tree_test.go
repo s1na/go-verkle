@@ -27,6 +27,7 @@ package verkle
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"math/big"
@@ -582,6 +583,7 @@ func BenchmarkCommitFullNode(b *testing.B) {
 	benchmarkCommitFullNode(b, 10)
 	benchmarkCommitFullNode(b, 8)
 }
+
 func benchmarkCommitFullNode(b *testing.B, width int) {
 	b.Run(fmt.Sprintf("width/%d", width), func(b *testing.B) {
 		nChildren := 1 << width
@@ -696,6 +698,35 @@ func BenchmarkModifyLeaves(b *testing.B) {
 			}
 		}
 		root.ComputeCommitment()
+	}
+}
+
+func BenchmarkLinCombG1(b *testing.B) {
+	cfg := GetTreeConfig(10)
+	poly := make([]bls.Fr, cfg.nodeWidth)
+	for i := 0; i < len(poly); i++ {
+		v := make([]byte, 2)
+		binary.BigEndian.PutUint16(v, uint16(i))
+		h := sha256.Sum256(v)
+		hashToFr(&poly[i], h, cfg.modulus)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		bls.LinCombG1(cfg.lg1, poly[:])
+	}
+}
+
+func BenchmarkHashToFr(b *testing.B) {
+	cfg := GetTreeConfig(8)
+	for i := 0; i < b.N; i++ {
+		var fr bls.Fr
+		v := make([]byte, 4)
+		binary.BigEndian.PutUint32(v, uint32(i))
+		h := sha256.Sum256(v)
+		hashToFr(&fr, h, cfg.modulus)
 	}
 }
 

@@ -720,7 +720,11 @@ func BenchmarkLinCombG1(b *testing.B) {
 }
 
 func BenchmarkHashToFr(b *testing.B) {
-	cfg := GetTreeConfig(8)
+	cfg := GetTreeConfig(10)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		var fr bls.Fr
 		v := make([]byte, 4)

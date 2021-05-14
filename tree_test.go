@@ -599,6 +599,10 @@ func benchmarkCommitFullNode(b *testing.B, width int) {
 			keys[i] = key
 		}
 
+		// This is just to initialize the config.
+		// Kilic seems to have a massive slowdown there.
+		GetTreeConfig(width)
+
 		b.ResetTimer()
 		b.ReportAllocs()
 
@@ -637,6 +641,10 @@ func benchmarkCommitNLeaves(b *testing.B, n, width int) {
 		sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i].k, src[j].k) < 0 })
 	}
 	sortKVs(sortedKVs)
+
+	// This is just to initialize the config.
+	// Kilic seems to have a massive slowdown there.
+	GetTreeConfig(width)
 
 	b.Run(fmt.Sprintf("insert/leaves/%d/width/%d", n, width), func(b *testing.B) {
 		b.ResetTimer()

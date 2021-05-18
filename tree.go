@@ -322,7 +322,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 				h := child.Hash()
 				comm := new(bls.G1Point)
 				var tmp bls.Fr
-				hashToFr(&tmp, h, n.treeConfig.modulus)
+				HashToFr(&tmp, h, n.treeConfig.modulus)
 				bls.MulG1(comm, &bls.GenG1, &tmp)
 				if flush != nil {
 					flush <- FlushableNode{h, child}
@@ -448,7 +448,7 @@ func (n *InternalNode) Hash() common.Hash {
 // sure that this doesn't overflow the modulus.
 // This piece of code is really ugly, and probably a performance hog, it
 // needs to be rewritten more efficiently.
-func hashToFr(out *bls.Fr, h [32]byte, modulus *big.Int) {
+func HashToFr(out *bls.Fr, h [32]byte, modulus *big.Int) {
 	var h2 [32]byte
 	// reverse endianness
 	for i := range h {
@@ -487,30 +487,18 @@ func (n *InternalNode) ComputeCommitment() *bls.G1Point {
 		case Empty:
 			emptyChildren++
 		case *LeafNode, *HashedNode:
-			hashToFr(&poly[idx], child.Hash(), n.treeConfig.modulus)
+			HashToFr(&poly[idx], child.Hash(), n.treeConfig.modulus)
 		default:
 			compressed := bls.ToCompressedG1(childC.ComputeCommitment())
-			hashToFr(&poly[idx], sha256.Sum256(compressed), n.treeConfig.modulus)
+			HashToFr(&poly[idx], sha256.Sum256(compressed), n.treeConfig.modulus)
 		}
 	}
 
-	var commP *bls.G1Point
 	if n.treeConfig.nodeWidth-emptyChildren >= multiExpThreshold {
-		commP = bls.LinCombG1(n.treeConfig.lg1, poly[:])
+		n.commitment = bls.LinCombG1(n.treeConfig.lg1, poly[:])
 	} else {
-		var comm bls.G1Point
-		bls.CopyG1(&comm, &bls.ZERO_G1)
-		for i := range poly {
-			if !bls.EqualZero(&poly[i]) {
-				var tmpG1, eval bls.G1Point
-				bls.MulG1(&eval, &n.treeConfig.lg1[i], &poly[i])
-				bls.CopyG1(&tmpG1, &comm)
-				bls.AddG1(&comm, &tmpG1, &eval)
-			}
-		}
-		commP = &comm
+		n.commitment = LinCombGBomb(n.treeConfig.lg1, poly[:])
 	}
-	n.commitment = commP
 	return n.commitment
 }
 
@@ -525,7 +513,7 @@ func (n *InternalNode) GetCommitmentsAlongPath(key []byte) ([]*bls.G1Point, []*b
 	bls.AsFr(&zi, uint64(childIdx))
 	fi := make([]bls.Fr, n.treeConfig.nodeWidth)
 	for i, child := range n.children {
-		hashToFr(&fi[i], child.Hash(), n.treeConfig.modulus)
+		HashToFr(&fi[i], child.Hash(), n.treeConfig.modulus)
 		if i == int(childIdx) {
 			bls.CopyFr(&yi, &fi[i])
 		}
@@ -671,7 +659,7 @@ func (n *HashedNode) Hash() common.Hash {
 func (n *HashedNode) ComputeCommitment() *bls.G1Point {
 	if n.commitment == nil {
 		var hashAsFr bls.Fr
-		hashToFr(&hashAsFr, n.hash, big.NewInt(0))
+		HashToFr(&hashAsFr, n.hash, big.NewInt(0))
 		n.commitment = new(bls.G1Point)
 		bls.MulG1(n.commitment, &bls.GenG1, &hashAsFr)
 	}
@@ -746,4 +734,18 @@ func setBit(bitlist []uint8, index int) {
 	byt := index / 8
 	bit := index % 8
 	bitlist[byt] |= (uint8(1) << bit)
+}
+
+func LinCombGBomb(lg1 []bls.G1Point, poly []bls.Fr) *bls.G1Point {
+	var comm bls.G1Point
+	bls.CopyG1(&comm, &bls.ZERO_G1)
+	for i := range poly {
+		if !bls.EqualZero(&poly[i]) {
+			var tmpG1, eval bls.G1Point
+			bls.MulG1(&eval, &lg1[i], &poly[i])
+			bls.CopyG1(&tmpG1, &comm)
+			bls.AddG1(&comm, &tmpG1, &eval)
+		}
+	}
+	return &comm
 }

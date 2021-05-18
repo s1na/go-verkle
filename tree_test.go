@@ -244,7 +244,7 @@ func TestHashToFrTrailingZeroBytes(t *testing.T) {
 
 	h := common.HexToHash("c79e576e0f534a5bbed66b32e5022a9d624b4415779b369a62b2e7a6c3d8e000")
 	var out bls.Fr
-	hashToFr(&out, h, modulus)
+	HashToFr(&out, h, modulus)
 
 	h2 := common.HexToHash("c79e576e0f534a5bbed66b32e5022a9d624b4415779b369a62b2e7a6c3d8e000")
 	var expected bls.Fr
@@ -716,7 +716,7 @@ func BenchmarkLinCombG1(b *testing.B) {
 		v := make([]byte, 2)
 		binary.BigEndian.PutUint16(v, uint16(i))
 		h := sha256.Sum256(v)
-		hashToFr(&poly[i], h, cfg.modulus)
+		HashToFr(&poly[i], h, cfg.modulus)
 	}
 
 	b.ResetTimer()
@@ -738,7 +738,7 @@ func BenchmarkHashToFr(b *testing.B) {
 		v := make([]byte, 4)
 		binary.BigEndian.PutUint32(v, uint32(i))
 		h := sha256.Sum256(v)
-		hashToFr(&fr, h, cfg.modulus)
+		HashToFr(&fr, h, cfg.modulus)
 	}
 }
 

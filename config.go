@@ -42,6 +42,14 @@ type TreeConfig struct {
 	lg1               []bls.G1Point
 }
 
+func (c *TreeConfig) LG1() []bls.G1Point {
+	return c.lg1
+}
+
+func (c *TreeConfig) Modulus() *big.Int {
+	return c.modulus
+}
+
 var configs map[int]*TreeConfig
 
 func init() {

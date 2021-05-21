@@ -55,7 +55,7 @@ type VerkleNode interface {
 	// values are expected to be ordered, and the commitments and
 	// hashes for each subtrie are computed online, as soon as it
 	// is clear that no more values will be inserted in there.
-	InsertOrdered([]byte, []byte, chan FlushableNode) error
+	InsertOrdered([]byte, []byte, chan FlushableNode, NodeResolverFn) error
 
 	// Delete a leaf with the given key
 	Delete([]byte) error
@@ -253,7 +253,7 @@ func (n *InternalNode) Insert(key []byte, value []byte) error {
 	return nil
 }
 
-func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan FlushableNode) error {
+func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan FlushableNode, resolver NodeResolverFn) error {
 	// Clear cached commitment on modification
 	if n.commitment != nil {
 		n.commitment = nil
@@ -293,7 +293,22 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 
 		n.children[nChild] = &LeafNode{key: key, value: value}
 	case *HashedNode:
-		return errInsertIntoHash
+		if resolver == nil {
+			return errInsertIntoHash
+		}
+
+		payload, err := resolver(child.hash[:])
+		if err != nil {
+			return err
+		}
+
+		// deserialize the payload and set it as the child
+		c, err := ParseNode(payload, n.depth+n.Width(), n.Width())
+		if err != nil {
+			return err
+		}
+		n.children[nChild] = c
+		return n.InsertOrdered(key, value, flush, resolver)
 	case *LeafNode:
 		// Need to add a new branch node to differentiate
 		// between two keys, if the keys are different.
@@ -329,11 +344,11 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 			} else {
 				// Reinsert the leaf in order to recurse
 				newBranch.children[nextWordInExistingKey] = child
-				newBranch.InsertOrdered(key, value, flush)
+				newBranch.InsertOrdered(key, value, flush, resolver)
 			}
 		}
 	default: // InternalNode
-		return child.InsertOrdered(key, value, flush)
+		return child.InsertOrdered(key, value, flush, resolver)
 	}
 	return nil
 }
@@ -580,7 +595,7 @@ func (n *LeafNode) Insert(k []byte, value []byte) error {
 	return nil
 }
 
-func (n *LeafNode) InsertOrdered(key []byte, value []byte, flush chan FlushableNode) error {
+func (n *LeafNode) InsertOrdered(key []byte, value []byte, flush chan FlushableNode, resolver NodeResolverFn) error {
 	err := n.Insert(key, value)
 	if err != nil && flush != nil {
 		flush <- FlushableNode{n.Hash(), n}
@@ -648,7 +663,7 @@ func (n *HashedNode) Insert(k []byte, value []byte) error {
 	return errInsertIntoHash
 }
 
-func (n *HashedNode) InsertOrdered(key []byte, value []byte, _ chan FlushableNode) error {
+func (n *HashedNode) InsertOrdered(key []byte, value []byte, _ chan FlushableNode, _ NodeResolverFn) error {
 	return errInsertIntoHash
 }
 
@@ -702,7 +717,7 @@ func (e Empty) Insert(k []byte, value []byte) error {
 	return errors.New("an empty node should not be inserted directly into")
 }
 
-func (e Empty) InsertOrdered(key []byte, value []byte, _ chan FlushableNode) error {
+func (e Empty) InsertOrdered(key []byte, value []byte, _ chan FlushableNode, _ NodeResolverFn) error {
 	return e.Insert(key, value)
 }
 

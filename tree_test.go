@@ -146,9 +146,9 @@ func TestComputeRootCommitmentThreeLeaves(t *testing.T) {
 
 func TestComputeRootCommitmentOnlineThreeLeaves(t *testing.T) {
 	root := New(10)
-	root.InsertOrdered(zeroKeyTest, testValue, nil)
-	root.InsertOrdered(fourtyKeyTest, testValue, nil)
-	root.InsertOrdered(ffx32KeyTest, testValue, nil)
+	root.InsertOrdered(zeroKeyTest, testValue, nil, nil)
+	root.InsertOrdered(fourtyKeyTest, testValue, nil, nil)
+	root.InsertOrdered(ffx32KeyTest, testValue, nil, nil)
 
 	// This still needs to be called, so that the root
 	// commitment is calculated.
@@ -181,9 +181,9 @@ func TestComputeRootCommitmentThreeLeavesDeep(t *testing.T) {
 
 func TestComputeRootCommitmentOnlineThreeLeavesDeep(t *testing.T) {
 	root := New(10)
-	root.InsertOrdered(zeroKeyTest, testValue, nil)
-	root.InsertOrdered(oneKeyTest, testValue, nil)
-	root.InsertOrdered(ffx32KeyTest, testValue, nil)
+	root.InsertOrdered(zeroKeyTest, testValue, nil, nil)
+	root.InsertOrdered(oneKeyTest, testValue, nil, nil)
+	root.InsertOrdered(ffx32KeyTest, testValue, nil, nil)
 
 	expected := []byte{180, 224, 116, 69, 8, 16, 10, 46, 12, 87, 199, 139, 17, 157, 123, 95, 113, 9, 180, 227, 72, 13, 125, 20, 35, 52, 98, 119, 121, 181, 253, 151, 253, 0, 62, 206, 64, 49, 8, 93, 140, 128, 232, 208, 102, 248, 81, 206}
 
@@ -199,9 +199,9 @@ func TestComputeRootCommitmentOnlineThreeLeavesFlush(t *testing.T) {
 	flush := make(chan FlushableNode)
 	go func() {
 		root := New(10)
-		root.InsertOrdered(zeroKeyTest, testValue, flush)
-		root.InsertOrdered(fourtyKeyTest, testValue, flush)
-		root.InsertOrdered(ffx32KeyTest, testValue, flush)
+		root.InsertOrdered(zeroKeyTest, testValue, flush, nil)
+		root.InsertOrdered(fourtyKeyTest, testValue, flush, nil)
+		root.InsertOrdered(ffx32KeyTest, testValue, flush, nil)
 		root.(*InternalNode).Flush(flush)
 		close(flush)
 	}()
@@ -307,7 +307,7 @@ func TestInsertVsOrdered(t *testing.T) {
 	}
 	root2 := New(10)
 	for _, k := range sortedKeys {
-		root2.InsertOrdered(k, value, nil)
+		root2.InsertOrdered(k, value, nil, nil)
 	}
 
 	h1 := root1.Hash().Bytes()
@@ -328,7 +328,7 @@ func TestFlush1kLeaves(t *testing.T) {
 	go func() {
 		root := New(10)
 		for _, k := range keys {
-			root.InsertOrdered(k, value, flush)
+			root.InsertOrdered(k, value, flush, nil)
 		}
 		root.(*InternalNode).Flush(flush)
 		close(flush)
@@ -571,6 +571,46 @@ func TestDevnet0PostMortem(t *testing.T) {
 	}
 }
 
+func TestInsertOrderedResolver(t *testing.T) {
+	value := []byte("value")
+	key1 := common.Hex2Bytes("0105000000000000000000000000000000000000000000000000000000000000")
+	key2 := common.Hex2Bytes("0107000000000000000000000000000000000000000000000000000000000000")
+	key3 := common.Hex2Bytes("0405000000000000000000000000000000000000000000000000000000000000")
+	key4 := common.Hex2Bytes("0407000000000000000000000000000000000000000000000000000000000000")
+
+	tree := New(8)
+	tree.Insert(key1, value)
+	tree.Insert(key2, value)
+	tree.Insert(key3, value)
+	tree.Insert(key4, value)
+	expected := tree.Hash()
+	leaf2 := tree.(*InternalNode).children[1].(*InternalNode).children[7]
+	leaf2S, err := leaf2.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf2H := leaf2.Hash()
+
+	resolver := func(k []byte) ([]byte, error) {
+		if !bytes.Equal(k, leaf2H.Bytes()) {
+			t.Fatal("Resolving unrelated hash")
+		}
+		return leaf2S, nil
+	}
+	tree = New(8)
+	tree.InsertOrdered(key2, value, nil, resolver)
+	tree.InsertOrdered(key3, value, nil, resolver)
+	tree.InsertOrdered(key4, value, nil, resolver)
+	if err := tree.InsertOrdered(key1, value, nil, resolver); err != nil {
+		t.Fatal(err)
+	}
+	root := tree.Hash()
+
+	if !bytes.Equal(expected.Bytes(), root.Bytes()) {
+		t.Error("Incorrect root")
+	}
+}
+
 func BenchmarkCommitLeaves(b *testing.B) {
 	benchmarkCommitNLeaves(b, 1000, 10)
 	benchmarkCommitNLeaves(b, 10000, 10)
@@ -658,7 +698,7 @@ func benchmarkCommitNLeaves(b *testing.B, n, width int) {
 		for i := 0; i < b.N; i++ {
 			root := New(width)
 			for _, el := range sortedKVs {
-				if err := root.InsertOrdered(el.k, el.v, nil); err != nil {
+				if err := root.InsertOrdered(el.k, el.v, nil, nil); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -717,8 +757,8 @@ func randomKeysSorted(n int) [][]byte {
 
 func TestMainnetStart(t *testing.T) {
 	tree := New(10)
-	type KV struct{
-		key string
+	type KV struct {
+		key   string
 		value string
 	}
 
@@ -747,7 +787,7 @@ func TestMainnetStart(t *testing.T) {
 	for _, kv := range kvs {
 		key := common.Hex2Bytes(kv.key)
 		value := common.Hex2Bytes(kv.value)
-		tree.InsertOrdered(key, value, nil)
+		tree.InsertOrdered(key, value, nil, nil)
 	}
 
 	h := tree.Hash()

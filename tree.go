@@ -41,8 +41,9 @@ import (
 // to a consumer (e.g. the routine responsible for saving it to
 // the db) once the node is no longer used by the tree.
 type FlushableNode struct {
-	Hash [32]byte
-	Node VerkleNode
+	Hash     [32]byte
+	Node     VerkleNode
+	Children int
 }
 
 type NodeResolverFn func([]byte) ([]byte, error)
@@ -273,7 +274,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 			case *LeafNode:
 				childHash := n.children[i].Hash()
 				if flush != nil {
-					flush <- FlushableNode{childHash, n.children[i]}
+					flush <- FlushableNode{childHash, n.children[i], -1}
 				}
 				n.children[i] = &HashedNode{hash: childHash}
 				break
@@ -320,7 +321,7 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 				hashToFr(&tmp, h, n.treeConfig.modulus)
 				bls.MulG1(comm, &bls.GenG1, &tmp)
 				if flush != nil {
-					flush <- FlushableNode{h, child}
+					flush <- FlushableNode{h, child, -1}
 				}
 				newBranch.children[nextWordInExistingKey] = &HashedNode{hash: h, commitment: comm}
 				// Next word differs, so this was the last level.
@@ -392,11 +393,11 @@ func (n *InternalNode) Flush(flush chan FlushableNode) {
 			n.children[i] = &HashedNode{c.Hash(), c.commitment}
 		} else if c, ok := child.(*LeafNode); ok {
 			childHash := c.Hash()
-			flush <- FlushableNode{childHash, c}
+			flush <- FlushableNode{childHash, c, -1}
 			n.children[i] = &HashedNode{hash: childHash}
 		}
 	}
-	flush <- FlushableNode{n.Hash(), n}
+	flush <- FlushableNode{n.Hash(), n, n.nonEmptyChildren()}
 }
 
 func (n *InternalNode) Get(k []byte, getter NodeResolverFn) ([]byte, error) {
@@ -437,6 +438,16 @@ func (n *InternalNode) Hash() common.Hash {
 	comm := n.ComputeCommitment()
 	h := sha256.Sum256(bls.ToCompressedG1(comm))
 	return common.BytesToHash(h[:])
+}
+
+func (n *InternalNode) nonEmptyChildren() int {
+	num := 0
+	for _, child := range n.children {
+		if _, ok := child.(Empty); !ok {
+			num++
+		}
+	}
+	return num
 }
 
 // This function takes a hash and turns it into a bls.Fr integer, making
@@ -583,7 +594,7 @@ func (n *LeafNode) Insert(k []byte, value []byte) error {
 func (n *LeafNode) InsertOrdered(key []byte, value []byte, flush chan FlushableNode) error {
 	err := n.Insert(key, value)
 	if err != nil && flush != nil {
-		flush <- FlushableNode{n.Hash(), n}
+		flush <- FlushableNode{n.Hash(), n, -1}
 	}
 	return err
 }

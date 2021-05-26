@@ -308,7 +308,18 @@ func (n *InternalNode) InsertOrdered(key []byte, value []byte, flush chan Flusha
 			return err
 		}
 		n.children[nChild] = c
-		return n.InsertOrdered(key, value, flush, resolver)
+		if err := n.InsertOrdered(key, value, flush, resolver); err != nil {
+			return err
+		}
+
+		// Re-hash the subtree
+		switch c := n.children[nChild].(type) {
+		case *LeafNode:
+			n.children[nChild] = &HashedNode{hash: c.Hash()}
+		case *InternalNode:
+			n.children[nChild] = &HashedNode{hash: c.Hash(), commitment: c.commitment}
+		}
+		return nil
 	case *LeafNode:
 		// Need to add a new branch node to differentiate
 		// between two keys, if the keys are different.
